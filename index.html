@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Controle Financeiro — Tais & Kleuber</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     /* Paleta na cor do Safra — azul-marinho */
@@ -113,6 +114,20 @@
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(120px);background:var(--panel2);
     border:1px solid var(--line);padding:12px 18px;border-radius:12px;box-shadow:var(--shadow);transition:.3s;z-index:60;font-weight:600}
   .toast.on{transform:translateX(-50%) translateY(0)}
+  /* auth gate */
+  .gate{position:fixed;inset:0;background:linear-gradient(180deg,#04213f,var(--bg));display:grid;place-items:center;z-index:80;padding:18px}
+  .gate.hide{display:none}
+  .authbox{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:26px;max-width:400px;width:100%;box-shadow:var(--shadow)}
+  .authbox h2{margin:0 0 4px;font-size:22px}
+  .authbox .authsub{color:var(--muted);font-size:13px;margin-bottom:18px}
+  .authbox label.f{margin-bottom:12px}
+  .authtabs{display:flex;gap:6px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:4px;margin-bottom:16px}
+  .authtabs button{flex:1;background:transparent;border:none;color:var(--muted);padding:8px;border-radius:8px}
+  .authtabs button.active{background:linear-gradient(135deg,var(--brand),#0e4390);color:#fff;font-weight:700}
+  .authmsg{font-size:13px;margin-top:10px;min-height:18px}
+  .authmsg.err{color:var(--red)} .authmsg.ok{color:var(--green)}
+  .btnfull{width:100%;justify-content:center;margin-top:4px}
+  .codebox{display:flex;gap:8px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-family:monospace;font-size:12px;word-break:break-all}
   .split{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
   svg text{fill:var(--txt)}
   .kpi-mini{display:flex;gap:14px;flex-wrap:wrap;margin-top:2px}
@@ -121,6 +136,26 @@
 </style>
 </head>
 <body>
+
+<!-- ============ TELA DE LOGIN ============ -->
+<div class="gate" id="gate">
+  <div class="authbox">
+    <h2>Controle Financeiro</h2>
+    <div class="authsub">Entre para acessar as finanças do casal na nuvem.</div>
+    <div class="authtabs">
+      <button class="active" id="tabLogin" onclick="authMode('login')">Entrar</button>
+      <button id="tabSignup" onclick="authMode('signup')">Criar conta</button>
+    </div>
+    <label class="f">E-mail<input type="email" id="authEmail" placeholder="voce@email.com" autocomplete="username"></label>
+    <label class="f">Senha<input type="password" id="authPass" placeholder="mínimo 6 caracteres" autocomplete="current-password"></label>
+    <button class="primary btnfull" id="authBtn" onclick="doAuth()">Entrar</button>
+    <div class="authmsg" id="authMsg"></div>
+    <div style="text-align:center;margin-top:14px">
+      <button class="ghost mini" onclick="usarOffline()">Continuar offline (sem nuvem)</button>
+    </div>
+  </div>
+</div>
+
 <div class="wrap">
   <header class="top">
     <div class="brand">
@@ -128,6 +163,7 @@
       <div>
         <h1>Controle Financeiro</h1>
         <div class="sub" id="peopleSub">Tais &amp; Kleuber</div>
+        <div class="sub" id="cloudStatus" style="font-size:11.5px"></div>
       </div>
     </div>
     <div class="toolbar">
@@ -139,7 +175,8 @@
       <button class="ghost mini" onclick="exportar()">⬇︎ Backup</button>
       <button class="ghost mini" onclick="document.getElementById('imp').click()">⬆︎ Restaurar</button>
       <input type="file" id="imp" accept="application/json" style="display:none" onchange="importar(event)">
-      <button class="ghost mini" onclick="openConfig()">⚙︎ Nomes</button>
+      <button class="ghost mini" onclick="openConfig()">⚙︎ Config</button>
+      <button class="ghost mini" id="btnSair" onclick="sair()" style="display:none">⎋ Sair</button>
     </div>
   </header>
 
@@ -305,12 +342,23 @@
 <!-- modal config -->
 <div class="modal-bg" id="modalCfg">
   <div class="modal">
-    <h3>Nomes das pessoas</h3>
+    <h3>Configurações</h3>
     <label class="f" style="margin-bottom:12px">Pessoa 1<input type="text" id="cfgP1"></label>
     <label class="f" style="margin-bottom:16px">Pessoa 2<input type="text" id="cfgP2"></label>
-    <div class="flexbtns" style="justify-content:flex-end">
+    <div class="flexbtns" style="justify-content:flex-end;margin-bottom:8px">
       <button class="ghost" onclick="closeModal('modalCfg')">Cancelar</button>
-      <button class="primary" onclick="salvarNomes()">Salvar</button>
+      <button class="primary" onclick="salvarNomes()">Salvar nomes</button>
+    </div>
+
+    <div id="cfgCloud" style="display:none;border-top:1px solid var(--line);margin-top:8px;padding-top:14px">
+      <div class="hint" style="margin-bottom:6px">Código do lar (compartilhe com seu parceiro para ele entrar no mesmo espaço):</div>
+      <div class="codebox"><span id="cfgCode">—</span><button class="mini ghost" onclick="copiarCodigo()">Copiar</button></div>
+      <div class="hint" style="margin:14px 0 6px">Entrar no espaço do parceiro (cole o código do lar dele):</div>
+      <div class="flexbtns">
+        <input type="text" id="joinCode" placeholder="código do lar">
+        <button class="primary mini" onclick="entrarEspaco()">Entrar</button>
+      </div>
+      <div class="hint" style="margin-top:6px;color:var(--amber)">Atenção: ao entrar em outro espaço, você passa a ver os dados dele.</div>
     </div>
   </div>
 </div>
@@ -331,6 +379,18 @@
 <div class="toast" id="toast"></div>
 
 <script>
+/* ================= SUPABASE (nuvem) ================= */
+const SUPA_URL = 'https://dyzqaxkhaygermitiyig.supabase.co';
+const SUPA_KEY = 'sb_publishable_DajWSRbe9PJ6x5eqlh-GDg_imXKVZ4_';
+let sb = null;
+try { sb = window.supabase ? window.supabase.createClient(SUPA_URL, SUPA_KEY) : null; } catch(e){ sb=null; }
+let HOUSEHOLD = null;     // id do espaço do casal
+let OFFLINE = false;      // true = usa só localStorage
+let LOADING = false;      // true durante carga da nuvem (não sincroniza)
+let PUSHING = false;      // true durante envio (ignora eco do realtime)
+let CHAN = null;          // canal realtime
+let _syncT = null;
+
 /* ================= ESTADO ================= */
 const KEY = 'financas_tais_kleuber_v1';
 const CORES = ['#3d7bff','#2fbf71','#ffb23e','#ff5c72','#a06bff','#00c2c7','#ff8a5b','#8b97a8','#e05bff'];
@@ -357,7 +417,178 @@ function load(){
   try{ const s=JSON.parse(localStorage.getItem(KEY)); if(s&&s.people) return s; }catch(e){}
   const s=seed(); localStorage.setItem(KEY,JSON.stringify(s)); return s;
 }
-function save(){ localStorage.setItem(KEY,JSON.stringify(state)); }
+function save(){
+  try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(e){}
+  scheduleSync();
+}
+
+/* ---------- sincronização com a nuvem ---------- */
+function scheduleSync(){
+  if(OFFLINE || LOADING || !sb || !HOUSEHOLD) return;
+  clearTimeout(_syncT);
+  _syncT = setTimeout(pushAll, 600);
+}
+async function pushAll(){
+  if(OFFLINE || !sb || !HOUSEHOLD) return;
+  PUSHING = true;
+  setCloud('sincronizando…');
+  try{
+    const hid = HOUSEHOLD;
+    const peopleRows = state.people.map((p,i)=>({id:p.id,household_id:hid,name:p.name,sort:i}));
+    const accRows = state.accounts.map(a=>({id:a.id,household_id:hid,owner_id:a.ownerId,type:a.type,
+      name:a.name,balance:round2(a.balance),taxa:(a.taxa==null?null:a.taxa),last_yield:a.lastYield||null}));
+    const txRows = state.tx.map(t=>({id:t.id,household_id:hid,date:t.date,descr:t.desc||null,category:t.cat||null,
+      nature:t.nat||null,amount:round2(t.amount),kind:t.kind,account_id:t.accountId||null}));
+
+    if(peopleRows.length) await sb.from('people').upsert(peopleRows);
+    if(accRows.length)    await sb.from('accounts').upsert(accRows);
+    if(txRows.length)     await sb.from('transactions').upsert(txRows);
+
+    await pruneCloud('people', peopleRows.map(r=>r.id));
+    await pruneCloud('accounts', accRows.map(r=>r.id));
+    await pruneCloud('transactions', txRows.map(r=>r.id));
+    setCloud('salvo na nuvem ✓');
+  }catch(e){ console.error(e); setCloud('erro ao sincronizar', true); }
+  finally{ setTimeout(()=>{ PUSHING=false; }, 800); }
+}
+async function pruneCloud(table, keepIds){
+  const { data } = await sb.from(table).select('id').eq('household_id', HOUSEHOLD);
+  if(!data) return;
+  const keep = new Set(keepIds);
+  const del = data.filter(r=>!keep.has(r.id)).map(r=>r.id);
+  if(del.length) await sb.from(table).delete().eq('household_id', HOUSEHOLD).in('id', del);
+}
+const round2 = n => Math.round((Number(n)||0)*100)/100;
+
+async function loadFromCloud(){
+  if(!sb || !HOUSEHOLD) return;
+  LOADING = true; setCloud('carregando…');
+  try{
+    const [pe, ac, tr] = await Promise.all([
+      sb.from('people').select('*').eq('household_id',HOUSEHOLD).order('sort'),
+      sb.from('accounts').select('*').eq('household_id',HOUSEHOLD),
+      sb.from('transactions').select('*').eq('household_id',HOUSEHOLD).order('date')
+    ]);
+    if(pe.error||ac.error||tr.error) throw (pe.error||ac.error||tr.error);
+    if(!pe.data || pe.data.length===0){
+      // espaço novo/vazio: cria dados padrão e envia
+      const s = seed(); state.people=s.people; state.accounts=s.accounts; state.tx=[];
+      LOADING=false; await pushAll();
+    } else {
+      state.people = pe.data.map(r=>({id:r.id,name:r.name}));
+      state.accounts = ac.data.map(r=>({id:r.id,ownerId:r.owner_id,type:r.type,name:r.name,
+        balance:Number(r.balance)||0,taxa:(r.taxa==null?undefined:Number(r.taxa)),lastYield:r.last_yield||undefined}));
+      state.tx = tr.data.map(r=>({id:r.id,date:r.date,desc:r.descr||'',cat:r.category||'Outros',
+        nat:r.nature||undefined,amount:Number(r.amount)||0,kind:r.kind,accountId:r.account_id||undefined}));
+      LOADING=false;
+    }
+    setCloud('salvo na nuvem ✓');
+    renderAll();
+  }catch(e){ console.error(e); LOADING=false; setCloud('erro ao carregar', true); }
+}
+function subscribeRealtime(){
+  if(!sb || !HOUSEHOLD) return;
+  if(CHAN){ try{ sb.removeChannel(CHAN); }catch(e){} }
+  const f = 'household_id=eq.'+HOUSEHOLD;
+  CHAN = sb.channel('fin-'+HOUSEHOLD)
+    .on('postgres_changes',{event:'*',schema:'public',table:'transactions',filter:f}, remoteChange)
+    .on('postgres_changes',{event:'*',schema:'public',table:'accounts',filter:f}, remoteChange)
+    .on('postgres_changes',{event:'*',schema:'public',table:'people',filter:f}, remoteChange)
+    .subscribe();
+}
+let _remoteT=null;
+function remoteChange(){ if(PUSHING) return; clearTimeout(_remoteT); _remoteT=setTimeout(loadFromCloud,500); }
+
+function setCloud(txt,err){
+  const el=document.getElementById('cloudStatus'); if(!el) return;
+  el.textContent = OFFLINE ? 'offline (só neste aparelho)' : txt;
+  el.style.color = err ? 'var(--red)' : 'var(--muted)';
+}
+
+/* ---------- autenticação ---------- */
+let AUTHMODE='login';
+function authMode(m){
+  AUTHMODE=m;
+  document.getElementById('tabLogin').classList.toggle('active',m==='login');
+  document.getElementById('tabSignup').classList.toggle('active',m==='signup');
+  document.getElementById('authBtn').textContent = m==='login'?'Entrar':'Criar conta';
+  document.getElementById('authMsg').textContent='';
+}
+function authMsg(t,ok){ const e=document.getElementById('authMsg'); e.textContent=t; e.className='authmsg '+(ok?'ok':'err'); }
+async function doAuth(){
+  if(!sb){ authMsg('Biblioteca do Supabase não carregou. Verifique sua conexão.'); return; }
+  const email=document.getElementById('authEmail').value.trim();
+  const pass=document.getElementById('authPass').value;
+  if(!email||pass.length<6){ authMsg('Informe e-mail e senha (mín. 6 caracteres).'); return; }
+  authMsg('Aguarde…',true);
+  try{
+    if(AUTHMODE==='signup'){
+      const {data,error}=await sb.auth.signUp({email,password:pass});
+      if(error) throw error;
+      if(!data.session){ authMsg('Conta criada! Confirme pelo e-mail e depois faça login.',true); authMode('login'); return; }
+    } else {
+      const {error}=await sb.auth.signInWithPassword({email,password:pass});
+      if(error) throw error;
+    }
+    // onAuthStateChange cuida do resto
+  }catch(e){ authMsg(traduzErro(e.message||'Falha na autenticação')); }
+}
+function traduzErro(m){
+  if(/Invalid login/i.test(m)) return 'E-mail ou senha incorretos.';
+  if(/already registered/i.test(m)) return 'Este e-mail já tem conta. Faça login.';
+  if(/rate limit/i.test(m)) return 'Muitas tentativas. Aguarde um pouco.';
+  return m;
+}
+async function onAuthed(session){
+  try{
+    const uid=session.user.id;
+    let { data:prof } = await sb.from('profiles').select('household_id').eq('id',uid).maybeSingle();
+    // fallback: se o trigger não criou o profile, cria household+profile aqui
+    if(!prof){
+      const { data:hh } = await sb.from('households').insert({name:'Meu espaço — Finanças'}).select('id').single();
+      await sb.from('profiles').insert({id:uid, household_id:hh.id, display_name:(session.user.email||'').split('@')[0]});
+      prof={household_id:hh.id};
+    }
+    HOUSEHOLD = prof.household_id;
+    OFFLINE=false;
+    document.getElementById('gate').classList.add('hide');
+    document.getElementById('btnSair').style.display='';
+    document.getElementById('cfgCloud').style.display='';
+    document.getElementById('cfgCode').textContent=HOUSEHOLD;
+    await loadFromCloud();
+    subscribeRealtime();
+  }catch(e){ console.error(e); authMsg('Erro ao carregar seu perfil. Rodou o SQL no Supabase?'); }
+}
+async function sair(){
+  if(sb){ try{ await sb.auth.signOut(); }catch(e){} }
+  HOUSEHOLD=null; if(CHAN){ try{ sb.removeChannel(CHAN); }catch(e){} CHAN=null; }
+  document.getElementById('btnSair').style.display='none';
+  document.getElementById('gate').classList.remove('hide');
+}
+function usarOffline(){
+  OFFLINE=true;
+  document.getElementById('gate').classList.add('hide');
+  setCloud('offline (só neste aparelho)');
+  renderAll();
+}
+function copiarCodigo(){
+  const t=document.getElementById('cfgCode').textContent;
+  if(navigator.clipboard) navigator.clipboard.writeText(t);
+  toast('Código copiado');
+}
+async function entrarEspaco(){
+  const code=document.getElementById('joinCode').value.trim();
+  if(!code) return;
+  try{
+    const { error } = await sb.rpc('join_household',{ code });
+    if(error) throw error;
+    HOUSEHOLD=code;
+    document.getElementById('cfgCode').textContent=HOUSEHOLD;
+    closeModal('modalCfg');
+    toast('Entrou no espaço do parceiro ✓');
+    await loadFromCloud(); subscribeRealtime();
+  }catch(e){ toast('Código inválido'); }
+}
 
 /* ================= HELPERS ================= */
 const brl = n => (n<0?'-':'')+'R$ '+Math.abs(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -817,6 +1048,26 @@ function importar(e){
 document.getElementById('gData').value=hoje();
 document.getElementById('eData').value=hoje();
 renderAll();
+
+// Autenticação: se já houver sessão, entra direto; senão mostra a tela de login.
+(async function initAuth(){
+  if(!sb){ // sem biblioteca (offline) — mantém app local
+    document.getElementById('gate').classList.add('hide');
+    setCloud('offline (só neste aparelho)');
+    return;
+  }
+  sb.auth.onAuthStateChange((event,session)=>{
+    if(session && (event==='SIGNED_IN'||event==='INITIAL_SESSION'||event==='TOKEN_REFRESHED')){
+      if(!HOUSEHOLD) onAuthed(session);
+    } else if(event==='SIGNED_OUT'){
+      HOUSEHOLD=null;
+    }
+  });
+  try{
+    const { data } = await sb.auth.getSession();
+    if(data && data.session){ onAuthed(data.session); }
+  }catch(e){ console.warn('sessão indisponível', e); }
+})();
 </script>
 </body>
 </html>
