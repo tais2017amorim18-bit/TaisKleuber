@@ -184,6 +184,7 @@
     <button class="tab active" data-v="geral" onclick="setTab('geral')">Visão Geral</button>
     <button class="tab" data-v="gastos" onclick="setTab('gastos')">Gastos & Entradas</button>
     <button class="tab" data-v="invest" onclick="setTab('invest')">Contas & Investimentos</button>
+    <button class="tab" data-v="imoveis" onclick="setTab('imoveis')">Imóveis</button>
   </div>
 
   <!-- ============ VISÃO GERAL ============ -->
@@ -204,11 +205,13 @@
     </div>
     <div class="grid cards" id="cardsConsol" style="margin-bottom:16px">
       <div class="card"><div class="lbl">Patrimônio total</div><div class="val" id="kPatri">R$ 0</div>
-        <div class="foot">Salários + Investimentos</div></div>
+        <div class="foot">Salários + Investimentos + Imóveis</div></div>
       <div class="card"><div class="lbl">Saldo em salários</div><div class="val brandc" id="kSal">R$ 0</div>
         <div class="foot" id="kSalFoot">disponível para gastar</div></div>
       <div class="card"><div class="lbl">Total investido</div><div class="val pos" id="kInv">R$ 0</div>
         <div class="foot" id="kInvFoot">rendendo</div></div>
+      <div class="card"><div class="lbl">Imóveis</div><div class="val amberc" id="kImo">R$ 0</div>
+        <div class="foot" id="kImoFoot">—</div></div>
       <div class="card"><div class="lbl">Gastos no período</div><div class="val neg" id="kGasto">R$ 0</div>
         <div class="kpi-mini" id="kGastoSplit"></div>
         <div class="foot" id="kGastoFoot">—</div></div>
@@ -259,6 +262,8 @@
             </select></label>
           <label class="f">Debitar de (opcional)
             <select id="gConta"></select></label>
+          <label class="f">Gasto de imóvel? (opcional)
+            <select id="gImovel"></select></label>
           <button class="primary" type="submit">Adicionar</button>
         </form>
         <div class="hint" style="margin-top:10px">Se escolher uma conta de investimento, o valor é tratado como <b>resgate</b> e sai do valor aplicado.</div>
@@ -272,6 +277,8 @@
           <label class="f">Valor (R$)<input type="number" id="eValor" step="0.01" min="0" placeholder="0,00" required></label>
           <label class="f">Creditar em
             <select id="eConta"></select></label>
+          <label class="f">Aluguel de imóvel? (opcional)
+            <select id="eImovel"></select></label>
           <button class="primary" type="submit">Adicionar</button>
         </form>
         <div class="hint" style="margin-top:10px">Escolha uma conta de <b>salário</b> para receitas/salários, ou uma conta de <b>investimento</b> para lançar um novo <b>aporte</b> (aumenta o valor aplicado e passa a render).</div>
@@ -299,6 +306,20 @@
         <button class="mini ghost" onclick="limparFiltros()">Limpar filtros</button>
       </div>
       <div id="tblGastos"></div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h3><span class="t">💳 Importar fatura do cartão de crédito</span></h3>
+      <div class="hint" style="margin-bottom:10px">Exporte a fatura do app do banco em <b>CSV</b> (ou copie e cole as linhas). Cada linha deve ter data, descrição e valor — ex: <i>05/07/2026;MERCADO XYZ;158,90</i>. Revise a prévia antes de importar.</div>
+      <div class="flexbtns" style="margin-bottom:10px">
+        <input type="file" id="ccFile" accept=".csv,.txt" style="max-width:280px" onchange="lerFatura(this.files[0])">
+        <button class="mini ghost" onclick="document.getElementById('ccPasteWrap').style.display='block'">ou colar texto</button>
+      </div>
+      <div id="ccPasteWrap" style="display:none;margin-bottom:10px">
+        <textarea id="ccPaste" rows="5" placeholder="Cole aqui as linhas da fatura..." style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--txt);padding:10px;font-family:monospace;font-size:13px"></textarea>
+        <button class="mini primary" style="margin-top:6px" onclick="lerFaturaTexto()">Ler texto colado</button>
+      </div>
+      <div id="ccPreview"></div>
     </div>
   </section>
 
@@ -335,6 +356,31 @@
     <div class="panel">
       <h3><span class="t">📊 Investimentos</span></h3>
       <div id="listaInvest"></div>
+    </div>
+  </section>
+
+  <!-- ============ IMÓVEIS ============ -->
+  <section class="view" id="v-imoveis">
+    <div class="cols2" style="margin-bottom:16px">
+      <div class="panel">
+        <h3><span class="t">🏠 Cadastrar imóvel</span></h3>
+        <form class="row" id="formImovel" onsubmit="addImovel(event)">
+          <label class="f">Nome<input type="text" id="iNome" placeholder="Ex: Apto Centro" required></label>
+          <label class="f">Titular<select id="iDono"></select></label>
+          <label class="f">Valor do imóvel (R$)<input type="number" id="iValor" step="0.01" min="0" placeholder="0,00" required></label>
+          <label class="f">Valorização (% ao ano)<input type="number" id="iTaxa" step="0.01" placeholder="Ex: 8"></label>
+          <button class="primary" type="submit">Adicionar</button>
+        </form>
+        <div class="hint" style="margin-top:10px">A <b>valorização</b> é aplicada ao valor do imóvel pelo botão <b>“📈 Rendimentos”</b> no topo. Aluguéis e gastos do imóvel são lançados na aba <b>“Gastos & Entradas”</b>, escolhendo o imóvel no campo próprio.</div>
+      </div>
+      <div class="panel">
+        <h3><span class="t">Resumo do período</span></h3>
+        <div id="imoResumo"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3><span class="t">🏠 Meus imóveis</span></h3>
+      <div id="listaImoveis"></div>
     </div>
   </section>
 </div>
@@ -438,7 +484,7 @@ async function pushAll(){
     const accRows = state.accounts.map(a=>({id:a.id,household_id:hid,owner_id:a.ownerId,type:a.type,
       name:a.name,balance:round2(a.balance),taxa:(a.taxa==null?null:a.taxa),last_yield:a.lastYield||null}));
     const txRows = state.tx.map(t=>({id:t.id,household_id:hid,date:t.date,descr:t.desc||null,category:t.cat||null,
-      nature:t.nat||null,amount:round2(t.amount),kind:t.kind,account_id:t.accountId||null}));
+      nature:t.nat||null,amount:round2(t.amount),kind:t.kind,account_id:t.accountId||null,property_id:t.propertyId||null}));
 
     if(peopleRows.length) await sb.from('people').upsert(peopleRows);
     if(accRows.length)    await sb.from('accounts').upsert(accRows);
@@ -479,7 +525,8 @@ async function loadFromCloud(){
       state.accounts = ac.data.map(r=>({id:r.id,ownerId:r.owner_id,type:r.type,name:r.name,
         balance:Number(r.balance)||0,taxa:(r.taxa==null?undefined:Number(r.taxa)),lastYield:r.last_yield||undefined}));
       state.tx = tr.data.map(r=>({id:r.id,date:r.date,desc:r.descr||'',cat:r.category||'Outros',
-        nat:r.nature||undefined,amount:Number(r.amount)||0,kind:r.kind,accountId:r.account_id||undefined}));
+        nat:r.nature||undefined,amount:Number(r.amount)||0,kind:r.kind,accountId:r.account_id||undefined,
+        propertyId:r.property_id||undefined}));
       LOADING=false;
     }
     setCloud('salvo na nuvem ✓');
@@ -655,7 +702,8 @@ function addGasto(e){
     desc:document.getElementById('gDesc').value.trim(),
     cat:document.getElementById('gCat').value, amount:valor,
     nat:document.getElementById('gNat').value,
-    kind, accountId:contaId||null
+    kind, accountId:contaId||null,
+    propertyId:document.getElementById('gImovel').value||null
   });
   if(conta){ conta.balance -= valor; }
   save(); e.target.reset(); document.getElementById('gData').value=hoje();
@@ -671,7 +719,9 @@ function addEntrada(e){
   state.tx.push({
     id:uid(), date:document.getElementById('eData').value,
     desc:document.getElementById('eDesc').value.trim(),
-    cat:'Entrada', amount:valor, kind, accountId:contaId
+    cat:document.getElementById('eImovel').value?'Aluguel':'Entrada',
+    amount:valor, kind, accountId:contaId,
+    propertyId:document.getElementById('eImovel').value||null
   });
   if(conta){ conta.balance += valor; }
   save(); e.target.reset(); document.getElementById('eData').value=hoje();
@@ -703,10 +753,18 @@ function addConta(e){
   toast('Conta criada ✅'); renderAll();
 }
 function delConta(id){
-  const usada=state.tx.some(t=>t.accountId===id);
-  if(usada && !confirm('Esta conta tem lançamentos. Remover mesmo assim? Os lançamentos ligados a ela ficarão sem conta.')) return;
-  state.tx.forEach(t=>{ if(t.accountId===id) t.accountId=null; });
-  state.accounts=state.accounts.filter(a=>a.id!==id); save(); toast('Conta removida'); renderAll();
+  const usada=state.tx.some(t=>t.accountId===id||t.propertyId===id);
+  if(usada && !confirm('Esta conta/imóvel tem lançamentos. Remover mesmo assim? Os lançamentos ligados ficarão sem vínculo.')) return;
+  state.tx.forEach(t=>{ if(t.accountId===id) t.accountId=null; if(t.propertyId===id) t.propertyId=null; });
+  state.accounts=state.accounts.filter(a=>a.id!==id); save(); toast('Removido'); renderAll();
+}
+function addImovel(e){
+  e.preventDefault();
+  state.accounts.push({ id:uid(), ownerId:document.getElementById('iDono').value, type:'imovel',
+    name:document.getElementById('iNome').value.trim(),
+    balance:parseFloat(document.getElementById('iValor').value)||0,
+    taxa:parseFloat(document.getElementById('iTaxa').value)||0, lastYield:hoje() });
+  save(); e.target.reset(); toast('Imóvel cadastrado 🏠'); renderAll();
 }
 function editSaldo(id){
   const a=acc(id); const v=prompt(`Novo saldo para "${a.name}" (R$):`, a.balance.toFixed(2));
@@ -731,7 +789,7 @@ function salvarTaxa(){
 function atualizarRendimentos(){
   let total=0, cont=0;
   const h=hoje();
-  state.accounts.filter(a=>a.type==='investimento').forEach(a=>{
+  state.accounts.filter(a=>a.type==='investimento'||a.type==='imovel').forEach(a=>{
     if(!a.taxa || a.taxa<=0 || a.balance<=0){ a.lastYield=h; return; }
     const last=a.lastYield||h;
     const dias=Math.floor((new Date(h)-new Date(last))/86400000);
@@ -739,7 +797,8 @@ function atualizarRendimentos(){
     const rend = a.balance * (Math.pow(1+a.taxa/100, dias/365) - 1);
     if(rend>0.005){
       a.balance += rend; total+=rend; cont++;
-      state.tx.push({id:uid(),date:h,desc:`Rendimento (${dias}d · ${a.taxa}% a.a.)`,cat:'Rendimento',amount:rend,kind:'rendimento',accountId:a.id});
+      const rotulo = a.type==='imovel' ? 'Valorização' : 'Rendimento';
+      state.tx.push({id:uid(),date:h,desc:`${rotulo} (${dias}d · ${a.taxa}% a.a.)`,cat:rotulo,amount:rend,kind:'rendimento',accountId:a.id});
     }
     a.lastYield=h;
   });
@@ -751,6 +810,9 @@ function atualizarRendimentos(){
 /* ================= CÁLCULOS ================= */
 function totSalario(){ return state.accounts.filter(a=>a.type==='salario').reduce((s,a)=>s+a.balance,0); }
 function totInvest(){ return state.accounts.filter(a=>a.type==='investimento').reduce((s,a)=>s+a.balance,0); }
+function totImoveis(){ return state.accounts.filter(a=>a.type==='imovel').reduce((s,a)=>s+a.balance,0); }
+function aluguelImovelP(id){ return state.tx.filter(t=>t.kind==='entrada'&&(id?t.propertyId===id:!!t.propertyId)&&inPeriod(t.date.slice(0,7))).reduce((s,t)=>s+t.amount,0); }
+function gastosImovelP(id){ return state.tx.filter(t=>(t.kind==='gasto'||t.kind==='resgate')&&(id?t.propertyId===id:!!t.propertyId)&&inPeriod(t.date.slice(0,7))).reduce((s,t)=>s+t.amount,0); }
 function patrimonioPessoa(pid){
   return state.accounts.filter(a=>a.ownerId===pid).reduce((s,a)=>s+a.balance,0);
 }
@@ -761,10 +823,16 @@ function gastosMes(mes){
 
 /* ================= RENDER ================= */
 function fillContaSelects(){
-  const opts = state.accounts.map(a=>`<option value="${a.id}">${a.name} · ${person(a.ownerId)?.name||''}</option>`).join('');
+  const optOf = a=>`<option value="${a.id}">${a.name} · ${person(a.ownerId)?.name||''}</option>`;
+  const opts = state.accounts.filter(a=>a.type!=='imovel').map(optOf).join('');
+  const iopts = '<option value="">— não —</option>'+state.accounts.filter(a=>a.type==='imovel').map(optOf).join('');
   document.getElementById('gConta').innerHTML = '<option value="">— sem conta (só registrar) —</option>'+opts;
   document.getElementById('eConta').innerHTML = opts;
-  document.getElementById('cDono').innerHTML = state.people.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  document.getElementById('gImovel').innerHTML = iopts;
+  document.getElementById('eImovel').innerHTML = iopts;
+  const pOpts = state.people.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  document.getElementById('cDono').innerHTML = pOpts;
+  document.getElementById('iDono').innerHTML = pOpts;
   const fp=document.getElementById('fPessoa'); const cur=fp.value;
   fp.innerHTML='<option value="">Todas as pessoas</option>'+state.people.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   fp.value=cur;
@@ -783,10 +851,12 @@ function renderCards(){
   document.getElementById('cardsConsol').style.display = sep?'none':'grid';
   document.getElementById('cardsSep').style.display = sep?'grid':'none';
   if(sep){ renderCardsSep(); return; }
-  const sal=totSalario(), inv=totInvest();
-  document.getElementById('kPatri').textContent=brl(sal+inv);
+  const sal=totSalario(), inv=totInvest(), imo=totImoveis();
+  document.getElementById('kPatri').textContent=brl(sal+inv+imo);
   document.getElementById('kSal').textContent=brl(sal);
   document.getElementById('kInv').textContent=brl(inv);
+  document.getElementById('kImo').textContent=brl(imo);
+  document.getElementById('kImoFoot').textContent=`Aluguéis no período: ${brl(aluguelImovelP(null))}`;
   const gm=gastosP();
   document.getElementById('kGasto').textContent=brl(gm);
   const gf=gastosNatP('fixo'), gv=gastosNatP('variavel');
@@ -802,13 +872,15 @@ function renderCardsSep(){
     const c=CORES[i%CORES.length];
     const sal=state.accounts.filter(a=>a.ownerId===p.id&&a.type==='salario').reduce((s,a)=>s+a.balance,0);
     const inv=state.accounts.filter(a=>a.ownerId===p.id&&a.type==='investimento').reduce((s,a)=>s+a.balance,0);
+    const imo=state.accounts.filter(a=>a.ownerId===p.id&&a.type==='imovel').reduce((s,a)=>s+a.balance,0);
     const gm=gastosPessoaP(p.id);
     const ap=aportesP(p.id);
     return `<div class="personcol">
       <div class="ph"><b><span class="dot" style="background:${c}"></span>${p.name}</b>
-        <b style="color:var(--gold)">${brl(sal+inv)}</b></div>
+        <b style="color:var(--gold)">${brl(sal+inv+imo)}</b></div>
       <div class="miniStat"><span>Salário / conta</span><b class="brandc">${brl(sal)}</b></div>
       <div class="miniStat"><span>Investido</span><b class="pos">${brl(inv)}</b></div>
+      <div class="miniStat"><span>Imóveis</span><b class="amberc">${brl(imo)}</b></div>
       <div class="miniStat"><span>Gastos no período</span><b class="neg">${brl(gm)}</b></div>
       <div class="miniStat"><span>Aportes no período</span><b class="brandc">${brl(ap)}</b></div>
     </div>`;
@@ -821,6 +893,7 @@ function renderPerPerson(){
     const v=patrimonioPessoa(p.id); const pct=Math.max(0,v/total*100);
     const sal=state.accounts.filter(a=>a.ownerId===p.id&&a.type==='salario').reduce((s,a)=>s+a.balance,0);
     const inv=state.accounts.filter(a=>a.ownerId===p.id&&a.type==='investimento').reduce((s,a)=>s+a.balance,0);
+    const imo=state.accounts.filter(a=>a.ownerId===p.id&&a.type==='imovel').reduce((s,a)=>s+a.balance,0);
     const c=CORES[i%CORES.length];
     return `<div style="margin-bottom:16px">
       <div class="split" style="justify-content:space-between">
@@ -828,7 +901,7 @@ function renderPerPerson(){
         <b>${brl(v)}</b>
       </div>
       <div class="barwrap"><div class="bar" style="width:${pct}%;background:${c}"></div></div>
-      <div class="kpi-mini"><div>Salário: <b>${brl(sal)}</b></div><div>Investido: <b>${brl(inv)}</b></div></div>
+      <div class="kpi-mini"><div>Salário: <b>${brl(sal)}</b></div><div>Investido: <b>${brl(inv)}</b></div><div>Imóveis: <b>${brl(imo)}</b></div></div>
     </div>`;
   }).join('');
 }
@@ -911,7 +984,7 @@ function tabelaTx(list,full){
       <td>${fmtDate(t.date)}</td>
       <td><b>${t.desc||'—'}</b>${full?`<div class="hint">${t.cat}${(t.kind==='gasto'||t.kind==='resgate')&&t.nat?' · '+(t.nat==='fixo'?'Fixo':'Variável'):''}</div>`:''}</td>
       <td>${kindTag(t)}${(t.kind==='gasto'||t.kind==='resgate')&&t.nat?` <span class="pill" style="${t.nat==='fixo'?'color:#ffb23e;border-color:#5a4a2a':'color:#5b93ff;border-color:#2a3a5a'}">${t.nat==='fixo'?'Fixo':'Variável'}</span>`:''}</td>
-      <td>${a?`<span class="pill">${a.name}${dono?' · '+dono:''}</span>`:'<span class="hint">—</span>'}</td>
+      <td>${a?`<span class="pill">${a.name}${dono?' · '+dono:''}</span>`:'<span class="hint">—</span>'}${t.propertyId&&acc(t.propertyId)?` <span class="pill">🏠 ${acc(t.propertyId).name}</span>`:''}</td>
       <td class="num ${cls}"><b>${sign<0?'-':'+'}${brl(t.amount).replace('R$ ','R$ ')}</b></td>
       <td class="num"><button class="danger" title="Remover" onclick="delTx('${t.id}')">✕</button></td>
     </tr>`;
@@ -1002,6 +1075,146 @@ function renderContas(){
   }
 }
 
+function renderImoveis(){
+  const imos=state.accounts.filter(a=>a.type==='imovel');
+  const box=document.getElementById('listaImoveis');
+  const res=document.getElementById('imoResumo');
+  if(!imos.length){
+    box.innerHTML='<div class="empty">Nenhum imóvel cadastrado ainda.</div>';
+    res.innerHTML='<div class="empty">Cadastre um imóvel ao lado para ver o resumo.</div>';
+    return;
+  }
+  const totV=totImoveis()||1;
+  box.innerHTML = imos.map((a,i)=>{
+    const c=CORES[i%CORES.length];
+    const alu=aluguelImovelP(a.id), gas=gastosImovelP(a.id), liq=alu-gas;
+    const pct=Math.max(2,a.balance/totV*100);
+    const valMensal=a.balance*(Math.pow(1+(a.taxa||0)/100,1/12)-1);
+    return `<div class="invrow" style="flex-direction:column;align-items:stretch">
+      <div class="split" style="justify-content:space-between">
+        <div class="info">
+          <div><span class="badge-owner">${person(a.ownerId)?.name||''}</span> <b>🏠 ${a.name}</b></div>
+          <div class="hint">Valorização: <b class="brandc">${(a.taxa||0).toLocaleString('pt-BR')}% a.a.</b> · ~${brl(valMensal)}/mês</div>
+        </div>
+        <div class="split">
+          <div style="text-align:right"><div class="hint">Valor do imóvel</div><b style="font-size:18px">${brl(a.balance)}</b></div>
+          <div class="flexbtns">
+            <button class="mini ghost" onclick="openTaxa('${a.id}')">Valorização</button>
+            <button class="mini ghost" onclick="editSaldo('${a.id}')">Reavaliar</button>
+            <button class="danger" onclick="delConta('${a.id}')">✕</button>
+          </div>
+        </div>
+      </div>
+      <div class="kpi-mini" style="margin-top:8px">
+        <div>Aluguel no período: <b class="pos">${brl(alu)}</b></div>
+        <div>Gastos no período: <b class="neg">${brl(gas)}</b></div>
+        <div>Líquido: <b class="${liq>=0?'pos':'neg'}">${brl(liq)}</b></div>
+      </div>
+      <div class="barwrap"><div class="bar" style="width:${pct}%;background:${c}"></div></div>
+    </div>`;
+  }).join('');
+  const aluT=aluguelImovelP(null), gasT=gastosImovelP(null), liqT=aluT-gasT;
+  res.innerHTML=`
+    <div class="grid cards">
+      <div class="card" style="padding:14px"><div class="lbl">Valor total</div><div class="val amberc" style="font-size:22px">${brl(totImoveis())}</div><div class="foot">${imos.length} imóve${imos.length===1?'l':'is'}</div></div>
+      <div class="card" style="padding:14px"><div class="lbl">Aluguéis</div><div class="val pos" style="font-size:22px">${brl(aluT)}</div><div class="foot">${periodRange().label}</div></div>
+      <div class="card" style="padding:14px"><div class="lbl">Gastos</div><div class="val neg" style="font-size:22px">${brl(gasT)}</div><div class="foot">${periodRange().label}</div></div>
+      <div class="card" style="padding:14px"><div class="lbl">Líquido</div><div class="val ${liqT>=0?'pos':'neg'}" style="font-size:22px">${brl(liqT)}</div><div class="foot">aluguéis − gastos</div></div>
+    </div>`;
+}
+
+/* ================= IMPORTAÇÃO DE FATURA (CSV) ================= */
+let ccRows=[];
+function lerFatura(file){
+  if(!file) return;
+  const r=new FileReader();
+  r.onload=()=>parseFatura(r.result);
+  r.readAsText(file,'utf-8');
+}
+function lerFaturaTexto(){ parseFatura(document.getElementById('ccPaste').value); }
+function parseFatura(texto){
+  ccRows=[];
+  const linhas=(texto||'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const reData=/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})|(\d{4})-(\d{2})-(\d{2})/;
+  for(let ln of linhas){
+    // define o separador: ; ou tab têm prioridade; vírgula só se não houver outro,
+    // protegendo vírgulas decimais (158,90 -> 158.90)
+    let sep = ln.includes(';') ? ';' : (ln.includes('\t') ? '\t' : ',');
+    if(sep===',') ln = ln.replace(/(\d),(\d{2})(?=$|[^\d])/g,'$1.$2');
+    const partes=ln.split(sep).map(s=>s.trim().replace(/^"|"$/g,''));
+    if(partes.length<2) continue;
+    let data=null, valor=null, descTk=[];
+    for(const p of partes){
+      const md=p.match(reData);
+      if(md && data===null){
+        if(md[4]){ data=`${md[4]}-${md[5]}-${md[6]}`; }
+        else{
+          let dd=md[1].padStart(2,'0'), mm=md[2].padStart(2,'0'), yy=md[3];
+          if(yy.length===2) yy='20'+yy;
+          data=`${yy}-${mm}-${dd}`;
+        }
+        continue;
+      }
+      const num=p.replace(/[R$\s]/g,'').replace(/\.(?=\d{3})/g,'').replace(',','.');
+      if(/^-?\d+(\.\d+)?$/.test(num) && valor===null && p!==''){
+        valor=parseFloat(num); continue;
+      }
+      if(p) descTk.push(p);
+    }
+    if(valor===null || !descTk.length) continue;
+    if(Math.abs(valor)<0.01) continue;
+    ccRows.push({sel:Math.sign(valor)>=0||true, date:data||hoje(), desc:descTk.join(' ').slice(0,60), amount:Math.abs(valor), neg:valor<0});
+  }
+  renderCcPreview();
+}
+function renderCcPreview(){
+  const box=document.getElementById('ccPreview');
+  if(!ccRows.length){ box.innerHTML='<div class="empty">Nenhuma linha reconhecida. Verifique se o arquivo tem data, descrição e valor em cada linha.</div>'; return; }
+  const optsConta='<option value="">— sem conta (só registrar) —</option>'+state.accounts.filter(a=>a.type==='salario').map(a=>`<option value="${a.id}">${a.name} · ${person(a.ownerId)?.name||''}</option>`).join('');
+  const rows=ccRows.map((r,i)=>`<tr>
+    <td><input type="checkbox" ${r.sel?'checked':''} onchange="ccRows[${i}].sel=this.checked;ccTotais()"></td>
+    <td>${fmtDate(r.date)}</td>
+    <td>${r.desc}${r.neg?' <span class="pill">crédito/estorno</span>':''}</td>
+    <td class="num">${brl(r.amount)}</td>
+  </tr>`).join('');
+  box.innerHTML=`
+    <table><thead><tr><th></th><th>Data</th><th>Descrição</th><th class="num">Valor</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="split" style="margin-top:14px;justify-content:space-between">
+      <div class="split">
+        <label class="f" style="min-width:200px">Debitar de<select id="ccConta">${optsConta}</select></label>
+        <label class="f">Natureza<select id="ccNat"><option value="variavel">Variável</option><option value="fixo">Fixo</option></select></label>
+        <label class="f">Categoria<select id="ccCat"><option>Cartão de crédito</option><option>Alimentação</option><option>Compras</option><option>Contas & Assinaturas</option><option>Outros</option></select></label>
+      </div>
+      <div style="text-align:right">
+        <div class="hint">Selecionados: <b id="ccTot">—</b></div>
+        <button class="primary" style="margin-top:6px" onclick="importarFatura()">Importar lançamentos</button>
+      </div>
+    </div>`;
+  ccTotais();
+}
+function ccTotais(){
+  const sel=ccRows.filter(r=>r.sel);
+  const el=document.getElementById('ccTot');
+  if(el) el.textContent=`${sel.length} itens · ${brl(sel.reduce((s,r)=>s+r.amount,0))}`;
+}
+function importarFatura(){
+  const sel=ccRows.filter(r=>r.sel);
+  if(!sel.length){ toast('Nenhum item selecionado'); return; }
+  const contaId=document.getElementById('ccConta').value||null;
+  const conta=contaId?acc(contaId):null;
+  const nat=document.getElementById('ccNat').value;
+  const cat=document.getElementById('ccCat').value;
+  let tot=0;
+  sel.forEach(r=>{
+    state.tx.push({id:uid(),date:r.date,desc:r.desc,cat,nat,amount:r.amount,kind:'gasto',accountId:contaId,propertyId:null});
+    if(conta) conta.balance-=r.amount;
+    tot+=r.amount;
+  });
+  ccRows=[]; document.getElementById('ccPreview').innerHTML='';
+  const f=document.getElementById('ccFile'); if(f) f.value='';
+  save(); toast(`${sel.length} gastos importados (${brl(tot)}) 💳`); renderAll();
+}
+
 function renderAll(){
   fillContaSelects();
   const vm=state.view||'consolidado';
@@ -1014,7 +1227,7 @@ function renderAll(){
   document.getElementById('donutTitle').textContent=`Gastos por categoria · ${pr.label}`;
   document.getElementById('peopleSub').textContent=`${state.people[0].name} & ${state.people[1].name}`;
   renderCards(); renderPerPerson(); renderDonut(); renderRecent();
-  renderGastos(); renderContas();
+  renderGastos(); renderContas(); renderImoveis();
 }
 
 /* ================= CONFIG / MODAIS ================= */
