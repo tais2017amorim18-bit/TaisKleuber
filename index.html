@@ -1506,11 +1506,23 @@ function parseFatura(texto){
     const descFinal=descTk.join(' ').slice(0,60);
     ccRows.push({sel:true, date:data||hoje(), desc:descFinal, amount:Math.abs(valor), neg:valor<0, cat:catAuto(descFinal)});
   }
+  // descarta lixo: arquivo binário lido como texto vira descrição com caracteres inválidos
+  const ilegivel = d => { const m=String(d).match(/[\uFFFD\x00-\x1F]/g); return m && m.length >= 3; };
+  const sujas = ccRows.filter(r=>ilegivel(r.desc)).length;
+  ccRows = ccRows.filter(r=>!ilegivel(r.desc));
+  if(sujas){
+    ccStatus(`Ignorei <b>${sujas}</b> linha(s) ilegíveis — o arquivo não parece ser um CSV de texto. `+
+             `Se for o <b>PDF da fatura</b>, envie o próprio PDF no campo acima que eu leio direto.`,'var(--amber)');
+  }
   renderCcPreview();
 }
 function renderCcPreview(){
   const box=document.getElementById('ccPreview');
-  if(!ccRows.length){ box.innerHTML='<div class="empty">Nenhuma linha reconhecida. Verifique se o arquivo tem data, descrição e valor em cada linha.</div>'; return; }
+  if(!ccRows.length){
+    box.innerHTML='<div class="empty">Nenhuma linha reconhecida.<br>Se for a fatura do banco, envie o <b>PDF</b> mesmo — eu leio direto, inclusive com senha.'+
+      '<div style="margin-top:12px"><button class="ghost mini" onclick="limparPrevia()">Limpar e tentar outro arquivo</button></div></div>';
+    return;
+  }
   const optsConta='<option value="">— sem conta (só registrar) —</option>'+state.accounts.filter(a=>a.type==='salario').map(a=>`<option value="${a.id}">${a.name} · ${person(a.ownerId)?.name||''}</option>`).join('');
   const catSel=(i,cur)=>`<select onchange="ccRows[${i}].cat=this.value" style="padding:5px 8px;font-size:12.5px">${CATS.map(c=>`<option ${c===cur?'selected':''}>${c}</option>`).join('')}</select>`;
   const temCartao=ccRows.some(r=>r.cartao);
@@ -1525,12 +1537,13 @@ function renderCcPreview(){
     ${temCartao?`<td><span class="hint">${r.cartao?'final '+r.cartao:'—'}</span></td>`:''}
     <td>${catSel(i,r.cat)}</td>
     <td class="num">${brl(r.amount)}</td>
+    <td class="num"><button class="danger" title="Tirar esta linha" onclick="removerLinha(${i})">✕</button></td>
   </tr>`).join('');
   const nPag=ccRows.filter(r=>r.pagamento).length;
   box.innerHTML=`
     <div class="hint" style="margin:8px 0">✨ Categorias distribuídas automaticamente pela descrição — ajuste o que quiser antes de importar.
     ${nPag?`<br>Os <b>${nPag} pagamentos da fatura</b> vêm desmarcados de propósito: as compras já entram uma a uma, então importá-los contaria o mesmo gasto duas vezes.`:''}</div>
-    <table><thead><tr><th></th><th>Data</th><th>Descrição</th>${temCartao?'<th>Cartão</th>':''}<th>Categoria</th><th class="num">Valor</th></tr></thead><tbody>${rows}</tbody></table>
+    <table><thead><tr><th></th><th>Data</th><th>Descrição</th>${temCartao?'<th>Cartão</th>':''}<th>Categoria</th><th class="num">Valor</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     <div class="split" style="margin-top:14px;justify-content:space-between;align-items:flex-end">
       <div class="split">
         <label class="f" style="min-width:190px">Debitar de<select id="ccConta">${optsConta}</select></label>
@@ -1544,12 +1557,29 @@ function renderCcPreview(){
       </div>
       <div style="text-align:right">
         <div class="hint">Selecionados: <b id="ccTot">—</b></div>
-        <button class="primary" style="margin-top:6px" onclick="importarFatura()">Importar lançamentos</button>
+        <div class="flexbtns" style="margin-top:6px;justify-content:flex-end">
+          <button class="ghost" onclick="limparPrevia()">✕ Descartar</button>
+          <button class="primary" onclick="importarFatura()">Importar lançamentos</button>
+        </div>
       </div>
     </div>
     ${ccRef?`<div class="hint" style="margin-top:10px">As parcelas mostram a data da <b>compra original</b> (uma viagem parcelada em 10x aparece com a data em que foi comprada). Como o valor sai do bolso <b>neste mês</b>, por padrão elas entram na data da fatura — assim o gasto do mês fica certo.</div>`:''}`;
   const sel=document.getElementById('ccModoData'); if(sel && ccModoData) sel.value=ccModoData;
   ccTotais();
+}
+function removerLinha(i){
+  ccRows.splice(i,1);
+  if(!ccRows.length){ limparPrevia(); toast('Prévia descartada'); return; }
+  renderCcPreview();
+}
+function limparPrevia(){
+  ccRows=[]; ccBuffer=null; ccRef=null;
+  const p=document.getElementById('ccPreview'); if(p) p.innerHTML='';
+  const w=document.getElementById('ccSenhaWrap'); if(w) w.style.display='none';
+  const f=document.getElementById('ccFile'); if(f) f.value='';
+  const s=document.getElementById('ccSenha'); if(s) s.value='';
+  const t=document.getElementById('ccPaste'); if(t) t.value='';
+  ccStatus('');
 }
 function ccTotais(){
   const sel=ccRows.filter(r=>r.sel);
