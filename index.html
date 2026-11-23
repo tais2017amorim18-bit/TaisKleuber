@@ -147,22 +147,18 @@
 </head>
 <body>
 
-<!-- ============ TELA DE LOGIN ============ -->
+<!-- ============ TELA DE SENHA (simples, uma só para o casal) ============ -->
 <div class="gate" id="gate">
   <div class="authbox">
     <h2>Controle Financeiro</h2>
-    <div class="authsub">Entre para acessar as finanças do casal na nuvem.</div>
-    <div class="authtabs">
-      <button class="active" id="tabLogin" onclick="authMode('login')">Entrar</button>
-      <button id="tabSignup" onclick="authMode('signup')">Criar conta</button>
-    </div>
-    <label class="f">E-mail<input type="email" id="authEmail" placeholder="voce@email.com" autocomplete="username"></label>
-    <label class="f">Senha<input type="password" id="authPass" placeholder="mínimo 6 caracteres" autocomplete="current-password"></label>
-    <button class="primary btnfull" id="authBtn" onclick="doAuth()">Entrar</button>
-    <div class="authmsg" id="authMsg"></div>
-    <div style="text-align:center;margin-top:14px">
-      <button class="ghost mini" onclick="usarOffline()">Continuar offline (sem nuvem)</button>
-    </div>
+    <div class="authsub">Digite a senha da família para abrir.</div>
+    <label class="f">Senha
+      <input type="password" id="pinPass" placeholder="senha da família"
+        onkeydown="if(event.key==='Enter')destravar()">
+    </label>
+    <button class="primary btnfull" onclick="destravar()">Entrar</button>
+    <div class="authmsg" id="pinMsg"></div>
+    <div class="hint" style="margin-top:10px;text-align:center">Cada aparelho pede a senha só na primeira vez.</div>
   </div>
 </div>
 
@@ -1666,24 +1662,50 @@ document.getElementById('eData').value=hoje();
 document.getElementById('pData').value=hoje();
 renderAll();
 
-// Autenticação: se já houver sessão, entra direto; senão mostra a tela de login.
-(async function initAuth(){
-  if(!sb){ // sem biblioteca (offline) — mantém app local
+// SENHA DA FAMÍLIA (simples): pedida uma vez por aparelho.
+// Obs.: ela fica escrita no código da página — é uma tranca leve, não um cofre.
+const SENHA_FAMILIA = 'Filomena1980$';
+function destravar(){
+  const v=(document.getElementById('pinPass').value||'').trim();
+  if(v===SENHA_FAMILIA){
+    try{ localStorage.setItem('tk_destravado','1'); }catch(e){}
     document.getElementById('gate').classList.add('hide');
-    setCloud('offline (só neste aparelho)');
-    return;
+  } else {
+    const m=document.getElementById('pinMsg');
+    m.textContent='Senha errada — tente de novo.'; m.className='authmsg err';
   }
-  sb.auth.onAuthStateChange((event,session)=>{
-    if(session && (event==='SIGNED_IN'||event==='INITIAL_SESSION'||event==='TOKEN_REFRESHED')){
-      if(!HOUSEHOLD) onAuthed(session);
-    } else if(event==='SIGNED_OUT'){
-      HOUSEHOLD=null;
-    }
-  });
+}
+
+// SEM LOGIN NA NUVEM: o site conecta direto ao espaço do casal.
+// Ele descobre o espaço certo escolhendo o que tem o histórico de lançamentos.
+(async function autoConnect(){
+  try{ if(localStorage.getItem('tk_destravado')==='1') document.getElementById('gate').classList.add('hide'); }catch(e){}
+  if(!sb){ setCloud('offline (só neste aparelho)'); return; }
+  setCloud('conectando…');
   try{
-    const { data } = await sb.auth.getSession();
-    if(data && data.session){ onAuthed(data.session); }
-  }catch(e){ console.warn('sessão indisponível', e); }
+    const [tr, ac, pe] = await Promise.all([
+      sb.from('transactions').select('household_id'),
+      sb.from('accounts').select('household_id'),
+      sb.from('people').select('household_id')
+    ]);
+    if(tr.error||ac.error||pe.error) throw (tr.error||ac.error||pe.error);
+    const cont={};
+    (tr.data||[]).forEach(r=>cont[r.household_id]=(cont[r.household_id]||0)+100); // transações pesam mais
+    (ac.data||[]).forEach(r=>cont[r.household_id]=(cont[r.household_id]||0)+1);
+    (pe.data||[]).forEach(r=>cont[r.household_id]=(cont[r.household_id]||0)+1);
+    const melhor=Object.entries(cont).sort((a,b)=>b[1]-a[1])[0];
+    if(!melhor){ setCloud('nuvem vazia — lançamentos novos serão salvos', true); OFFLINE=true; renderAll(); return; }
+    HOUSEHOLD = melhor[0];
+    OFFLINE=false;
+    document.getElementById('btnReload').style.display='';
+    const cfg=document.getElementById('cfgCloud'); if(cfg) cfg.style.display='none';
+    await loadFromCloud();
+    subscribeRealtime();
+  }catch(e){
+    console.error(e);
+    setCloud('sem conexão com a nuvem — modo offline', true);
+    OFFLINE=true; renderAll();
+  }
 })();
 
 // Ao voltar para a aba (celular/PC), recarrega da nuvem para nunca ficar com tela desatualizada
