@@ -325,6 +325,7 @@
 
   <!-- ============ CARTÃO DE CRÉDITO ============ -->
   <section class="view" id="v-cartao">
+    <div id="segCardWrap" style="margin-bottom:14px"></div>
     <div class="grid cards" style="margin-bottom:16px">
       <div class="card"><div class="lbl">Gastos no cartão</div><div class="val neg" id="kCard">R$ 0</div>
         <div class="foot" id="kCardFoot">—</div></div>
@@ -549,7 +550,7 @@ async function pushAll(){
       onus:round2(a.onus||0),pmt:round2(a.pmt||0)}));
     const txRows = state.tx.map(t=>({id:t.id,household_id:hid,date:t.date,descr:t.desc||null,category:t.cat||null,
       nature:t.nat||null,amount:round2(t.amount),kind:t.kind,account_id:t.accountId||null,property_id:t.propertyId||null,
-      is_card:!!t.card}));
+      is_card:!!t.card,card_owner:t.cardOwner||null}));
 
     if(peopleRows.length) await sb.from('people').upsert(peopleRows);
     if(accRows.length)    await sb.from('accounts').upsert(accRows);
@@ -557,12 +558,12 @@ async function pushAll(){
     // (exclusões são feitas de forma pontual em delTx/delConta — nunca em massa,
     //  para um aparelho desatualizado não apagar o que o outro lançou)
     setCloud('salvo na nuvem ✓');
-  }catch(e){ console.error(e); setCloud('erro ao sincronizar', true); }
+  }catch(e){ console.warn('Nuvem indisponivel: '+((e&&e.message)||e)); setCloud('erro ao sincronizar', true); }
   finally{ setTimeout(()=>{ PUSHING=false; }, 800); }
 }
 async function cloudDelete(table, id){
   if(OFFLINE || !sb || !HOUSEHOLD) return;
-  try{ await sb.from(table).delete().eq('household_id', HOUSEHOLD).eq('id', id); }catch(e){ console.error(e); }
+  try{ await sb.from(table).delete().eq('household_id', HOUSEHOLD).eq('id', id); }catch(e){ console.warn('Nuvem indisponivel: '+((e&&e.message)||e)); }
 }
 const round2 = n => Math.round((Number(n)||0)*100)/100;
 
@@ -588,12 +589,12 @@ async function loadFromCloud(){
         onus:Number(r.onus)||0,pmt:Number(r.pmt)||0}));
       state.tx = tr.data.map(r=>({id:r.id,date:r.date,desc:r.descr||'',cat:r.category||'Outros',
         nat:r.nature||undefined,amount:Number(r.amount)||0,kind:r.kind,accountId:r.account_id||undefined,
-        propertyId:r.property_id||undefined,card:!!r.is_card}));
+        propertyId:r.property_id||undefined,card:!!r.is_card,cardOwner:r.card_owner||undefined}));
       LOADING=false;
     }
     setCloud('salvo na nuvem ✓');
     renderAll();
-  }catch(e){ console.error(e); LOADING=false; setCloud('erro ao carregar', true); }
+  }catch(e){ console.warn('Nuvem indisponivel: '+((e&&e.message)||e)); LOADING=false; setCloud('erro ao carregar', true); }
 }
 function subscribeRealtime(){
   if(!sb || !HOUSEHOLD) return;
@@ -667,7 +668,7 @@ async function onAuthed(session){
     document.getElementById('cfgCode').textContent=HOUSEHOLD;
     await loadFromCloud();
     subscribeRealtime();
-  }catch(e){ console.error(e); authMsg('Erro ao carregar seu perfil. Rodou o SQL no Supabase?'); }
+  }catch(e){ console.warn('Nuvem indisponivel: '+((e&&e.message)||e)); authMsg('Erro ao carregar seu perfil. Rodou o SQL no Supabase?'); }
 }
 async function sair(){
   if(sb){ try{ await sb.auth.signOut(); }catch(e){} }
@@ -1028,16 +1029,37 @@ function drawDonut(gs, boxId, legId){
 function renderDonut(){
   drawDonut(state.tx.filter(t=>(t.kind==='gasto'||t.kind==='resgate') && inPeriod(t.date.slice(0,7))),'donut','donutLegend');
 }
+/* dono do gasto de cartão: quem foi marcado na importação, ou o titular da conta debitada */
+function cardDono(t){ return t.cardOwner || (t.accountId && acc(t.accountId) ? acc(t.accountId).ownerId : null); }
+let CARDVIEW=''; // ''=consolidado, ou id da pessoa
+function setCardView(v){ CARDVIEW=v; renderAll(); }
 function renderCartao(){
-  const cardTx=txCartaoP();
-  const tot=gastosCartaoP(), totG=gastosP();
+  // seletor Consolidado / por pessoa
+  const wrap=document.getElementById('segCardWrap');
+  wrap.innerHTML = `<div class="seg">
+    <button class="${CARDVIEW===''?'active':''}" onclick="setCardView('')">Consolidado</button>
+    ${state.people.map(p=>`<button class="${CARDVIEW===p.id?'active':''}" onclick="setCardView('${p.id}')">Cartão ${p.name}</button>`).join('')}
+  </div>`;
+  if(CARDVIEW && !person(CARDVIEW)) CARDVIEW='';
+
+  const todos=txCartaoP();
+  const cardTx = CARDVIEW ? todos.filter(t=>cardDono(t)===CARDVIEW) : todos;
+  const tot=cardTx.reduce((s,t)=>s+t.amount,0), totG=gastosP();
   document.getElementById('kCard').textContent=brl(tot);
-  document.getElementById('kCardFoot').textContent=periodRange().label;
+  const quem = CARDVIEW ? ('Cartão '+(person(CARDVIEW)?.name||'')) : 'Consolidado (os dois)';
+  if(CARDVIEW){
+    document.getElementById('kCardFoot').textContent=`${quem} · ${periodRange().label}`;
+  } else {
+    const partes=state.people.map(p=>`${p.name}: ${brl(todos.filter(t=>cardDono(t)===p.id).reduce((s,t)=>s+t.amount,0))}`);
+    const semDono=todos.filter(t=>!cardDono(t)).reduce((s,t)=>s+t.amount,0);
+    if(semDono>0.005) partes.push(`Sem dono: ${brl(semDono)}`);
+    document.getElementById('kCardFoot').textContent=`${partes.join(' · ')} · ${periodRange().label}`;
+  }
   document.getElementById('kCardPct').textContent=(totG>0?Math.round(tot/totG*100):0)+'%';
   document.getElementById('kCardN').textContent=cardTx.length;
-  document.getElementById('cardListTitle').textContent=`Gastos do cartão · ${periodRange().label}`;
+  document.getElementById('cardListTitle').textContent=`Gastos do cartão · ${quem} · ${periodRange().label}`;
   const box=document.getElementById('listaCartao');
-  if(!cardTx.length){ box.innerHTML='<div class="empty">Nenhum gasto de cartão no período. Envie a fatura acima para importar.</div>'; }
+  if(!cardTx.length){ box.innerHTML='<div class="empty">Nenhum gasto de cartão aqui neste período. Envie a fatura acima — e escolha de quem é o cartão antes de importar.</div>'; }
   else{
     const list=[...cardTx].sort((a,b)=> b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     box.innerHTML=tabelaTx(list,true);
@@ -1083,7 +1105,7 @@ function gastosNat(mes,nat){
   return state.tx.filter(t=>(t.kind==='gasto'||t.kind==='resgate') && t.nat===nat && t.date.slice(0,7)===mes)
     .reduce((s,t)=>s+t.amount,0);
 }
-function ownerOfTx(t){ const a=t.accountId?acc(t.accountId):null; return a?a.ownerId:null; }
+function ownerOfTx(t){ const a=t.accountId?acc(t.accountId):null; return a?a.ownerId:(t.cardOwner||null); }
 /* agregações por período selecionado */
 function gastosP(){ return state.tx.filter(t=>(t.kind==='gasto'||t.kind==='resgate')&&inPeriod(t.date.slice(0,7))).reduce((s,t)=>s+t.amount,0); }
 function gastosNatP(nat){ return state.tx.filter(t=>(t.kind==='gasto'||t.kind==='resgate')&&t.nat===nat&&inPeriod(t.date.slice(0,7))).reduce((s,t)=>s+t.amount,0); }
@@ -1106,7 +1128,7 @@ function tabelaTx(list,full){
     return `<tr>
       <td>${fmtDate(t.date)}</td>
       <td><b>${t.desc||'—'}</b>${full?`<div class="hint">${t.cat}${(t.kind==='gasto'||t.kind==='resgate')&&t.nat?' · '+(t.nat==='fixo'?'Fixo':'Variável'):''}</div>`:''}</td>
-      <td>${kindTag(t)}${(t.kind==='gasto'||t.kind==='resgate')&&t.nat?` <span class="pill" style="${t.nat==='fixo'?'color:#ffb23e;border-color:#5a4a2a':'color:#5b93ff;border-color:#2a3a5a'}">${t.nat==='fixo'?'Fixo':'Variável'}</span>`:''}${t.card?' <span class="pill">💳</span>':''}</td>
+      <td>${kindTag(t)}${(t.kind==='gasto'||t.kind==='resgate')&&t.nat?` <span class="pill" style="${t.nat==='fixo'?'color:#ffb23e;border-color:#5a4a2a':'color:#5b93ff;border-color:#2a3a5a'}">${t.nat==='fixo'?'Fixo':'Variável'}</span>`:''}${t.card?` <span class="pill">💳${t.cardOwner&&person(t.cardOwner)?' '+person(t.cardOwner).name:''}</span>`:''}</td>
       <td>${a?`<span class="pill">${a.name}${dono?' · '+dono:''}</span>`:'<span class="hint">—</span>'}${t.propertyId&&acc(t.propertyId)?` <span class="pill">🏠 ${acc(t.propertyId).name}</span>`:''}</td>
       <td class="num ${cls}"><b>${sign<0?'-':'+'}${brl(t.amount).replace('R$ ','R$ ')}</b></td>
       <td class="num"><button class="danger" title="Remover" onclick="delTx('${t.id}')">✕</button></td>
@@ -1335,7 +1357,7 @@ async function abrirPdf(buffer, senha){
       const c=document.getElementById('ccSenha'); if(c){ c.value=''; c.focus(); }
       return;
     }
-    console.error(e);
+    console.warn('Nuvem indisponivel: '+((e&&e.message)||e));
     ccStatus('Não consegui abrir este PDF: '+(e.message||e),'var(--red)');
   }
 }
@@ -1543,6 +1565,7 @@ function renderCcPreview(){
     <div class="split" style="margin-top:14px;justify-content:space-between;align-items:flex-end">
       <div class="split">
         <label class="f" style="min-width:190px">Debitar de<select id="ccConta">${optsConta}</select></label>
+        <label class="f" style="min-width:150px">Cartão de quem?<select id="ccDono">${state.people.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}<option value="">— não marcar —</option></select></label>
         <label class="f">Natureza<select id="ccNat"><option value="variavel">Variável</option><option value="fixo">Fixo</option></select></label>
         ${ccRef?`<label class="f" style="min-width:230px">Data dos lançamentos
           <select id="ccModoData" onchange="ccModoData=this.value;renderCcPreview()">
@@ -1594,14 +1617,16 @@ function importarFatura(){
   const contaId=document.getElementById('ccConta').value||null;
   const conta=contaId?acc(contaId):null;
   const nat=document.getElementById('ccNat').value;
+  const donoSel=document.getElementById('ccDono'); const dono=donoSel?(donoSel.value||null):null;
   let tot=0;
   sel.forEach(r=>{
     const desc=r.desc+(r.parcela?` (parc. ${r.parcela})`:'')+(r.cartao?` · final ${r.cartao}`:'');
     state.tx.push({id:uid(),date:dataDoLancamento(r),desc:desc.slice(0,80),cat:r.cat||'Outros',nat,
-      amount:r.amount,kind:'gasto',accountId:contaId,propertyId:null,card:true});
+      amount:r.amount,kind:'gasto',accountId:contaId,propertyId:null,card:true,cardOwner:dono});
     if(conta) conta.balance-=r.amount;
     tot+=r.amount;
   });
+  if(dono) CARDVIEW=dono; // já abre a aba na visão do cartão importado
   // leva a tela para o mês da fatura, senão os lançamentos "somem" no mês corrente
   const mesFatura = sel.map(r=>dataDoLancamento(r)).sort().pop();
   if(mesFatura) state.period={mode:pMode(), anchor:mesFatura.slice(0,7)};
@@ -1702,7 +1727,7 @@ function destravar(){
     await loadFromCloud();
     subscribeRealtime();
   }catch(e){
-    console.error(e);
+    console.warn('Nuvem indisponivel: '+((e&&e.message)||e));
     setCloud('sem conexão com a nuvem — modo offline', true);
     OFFLINE=true; renderAll();
   }
